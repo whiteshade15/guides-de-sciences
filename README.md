@@ -1,2 +1,3 @@
-# guides-de-sciences
-Site verrouillé
+# Guides de sciences
+
+Accès réservé.

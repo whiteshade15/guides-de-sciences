@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Guides de sciences</title>
+<meta name="theme-color" content="#9AA7B1">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icone-192.png">
+<link rel="apple-touch-icon" href="icone-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Guides">
+<style>
+  html, body { margin: 0; height: 100%; background: #9AA7B1; font-family: "EB Garamond", Georgia, serif; color: #2B2622; }
+  body { display: flex; align-items: center; justify-content: center; }
+  form { background: #F3EAD6; padding: 28px 32px; border-radius: 6px; box-shadow: 0 8px 30px rgba(0,0,0,.25); width: min(340px, 86vw); }
+  h1 { font-size: 26px; margin: 0 0 4px; font-weight: 500; }
+  p { margin: 0 0 18px; font-size: 16px; }
+  label { display: block; font-size: 15px; margin: 12px 0 4px; }
+  input { box-sizing: border-box; width: 100%; font: inherit; font-size: 18px; padding: 8px 10px; border: 1px solid #6A452B; border-radius: 4px; background: #fffaf0; }
+  button { margin-top: 18px; width: 100%; font: inherit; font-size: 18px; padding: 10px; border: 0; border-radius: 4px; background: #6A452B; color: #F3EAD6; }
+  button:disabled { opacity: .6; }
+  .erreur { color: #A3271F; min-height: 1.3em; margin: 10px 0 0; }
+</style>
+</head>
+<body>
+<form id="acces" autocomplete="off">
+  <h1>Guides de sciences</h1>
+  <p>Accès réservé.</p>
+  <label for="nom">Nom</label>
+  <input id="nom" name="nom" autocapitalize="none" spellcheck="false" required>
+  <label for="code">Code</label>
+  <input id="code" name="code" type="password" required>
+  <button id="entrer">Entrer</button>
+  <p class="erreur" id="erreur" role="alert"></p>
+</form>
+<script>
+const SERRURES = ["Vt9H6aaQY7WE2BA0qfgQvgD+PZKUHvmsDgch/7vac3+5ElGpU14t3E5Rww+HjH6tgO1k249QxwxH3oZC","nE7euhg7ZWWf8QGqyvNrcnMWF8NhTSceVkYyej2EolQqTgfLgUAD+vki75ZbX1Y1scK5V560dtT4e2RT"], TOURS = 250000, MEMO = 'guides-acces';
+const octets = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+const texte = (b) => btoa(String.fromCharCode(...new Uint8Array(b)));
+const s = crypto.subtle;
+async function derive(nom, code) {
+  const sel = await s.digest('SHA-256', new TextEncoder().encode('guides-de-sciences:' + nom));
+  const base = await s.importKey('raw', new TextEncoder().encode(nom + ':' + code), 'PBKDF2', false, ['deriveBits']);
+  return s.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: sel, iterations: TOURS }, base, 256);
+}
+async function ouvrir(bits) {
+  const cle = await s.importKey('raw', bits, 'AES-GCM', false, ['decrypt']);
+  for (const t of SERRURES) {
+    const b = octets(t);
+    try {
+      const brute = await s.decrypt({ name: 'AES-GCM', iv: b.slice(0, 12) }, cle, b.slice(12));
+      const app = new Uint8Array(await (await fetch('app.bin')).arrayBuffer());
+      const clePage = await s.importKey('raw', brute, 'AES-GCM', false, ['decrypt']);
+      const html = new TextDecoder().decode(await s.decrypt({ name: 'AES-GCM', iv: app.slice(0, 12) }, clePage, app.slice(12)));
+      document.open(); document.write(html); document.close();
+      return true;
+    } catch (e) { /* serrure suivante */ }
+  }
+  return false;
+}
+const lire = () => { try { return localStorage.getItem(MEMO); } catch (e) { return null; } };
+const garder = (v) => { try { v ? localStorage.setItem(MEMO, v) : localStorage.removeItem(MEMO); } catch (e) {} };
+(async () => {
+  const memo = lire();
+  if (memo && await ouvrir(octets(memo))) return;
+  garder(null);
+  const f = document.getElementById('acces'), bouton = document.getElementById('entrer'), erreur = document.getElementById('erreur');
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    bouton.disabled = true; bouton.textContent = 'Ouverture…'; erreur.textContent = '';
+    const bits = await derive(f.nom.value.trim().toLowerCase(), f.code.value);
+    garder(texte(bits));
+    if (!(await ouvrir(bits))) { garder(null); erreur.textContent = 'Nom ou code incorrect.'; bouton.disabled = false; bouton.textContent = 'Entrer'; }
+  });
+})();
+</script>
+</body>
+</html>
